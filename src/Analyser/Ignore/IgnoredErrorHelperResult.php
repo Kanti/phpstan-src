@@ -7,8 +7,10 @@ use PHPStan\File\FileExcluder;
 use PHPStan\File\FileHelper;
 use PHPStan\ShouldNotHappenException;
 use function array_fill_keys;
+use function array_flip;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function count;
 use function is_array;
 use function is_string;
@@ -91,12 +93,14 @@ final class IgnoredErrorHelperResult
 	/**
 	 * @param list<Error> $errors
 	 * @param string[] $analysedFiles
+	 * @param string[] $filesChangedByFix Files changed by the previous rounds of --fix, their unmatched ignores are reported even for a list of files.
 	 */
 	public function process(
 		array $errors,
 		bool $onlyFiles,
 		array $analysedFiles,
 		bool $hasInternalErrors,
+		array $filesChangedByFix = [],
 	): IgnoredErrorHelperProcessedResult
 	{
 		$unmatchedIgnoredErrors = $this->ignoreErrors;
@@ -355,6 +359,7 @@ final class IgnoredErrorHelperResult
 		}
 
 		$analysedFilesKeys = array_fill_keys($analysedFiles, true);
+		$filesChangedByFixKeys = array_flip(array_map(fn (string $file): string => $this->fileHelper->normalizePath($file), $filesChangedByFix));
 
 		if (!$hasInternalErrors) {
 			foreach ($unmatchedIgnoredErrors as $i => $unmatchedIgnoredError) {
@@ -396,7 +401,10 @@ final class IgnoredErrorHelperResult
 						continue;
 					}
 
-					if ($onlyFiles) {
+					// an earlier round of --fix can leave an ignore in a file it changed unmatched, like the one
+					// that matched an error fixed by --fix-ignored, so it is reported for a list of files too
+					// and the next round removes it
+					if ($onlyFiles && !array_key_exists($unmatchedIgnoredError['realPath'], $filesChangedByFixKeys)) {
 						continue;
 					}
 
